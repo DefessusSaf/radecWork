@@ -46,9 +46,9 @@ def calculate_param(xpixsz, gain, exptime, scale):
     D = xpixsz * scale
     DETECT_MINAREA = (D / scale) ** 2  # Это может быть упрощено до D^2, если scale не меняется
     
-    signal = gain * exptime
-    noise = np.sqrt(signal)
-    DETECT_THRESH = signal / noise
+    # signal = gain * exptime
+    # noise = np.sqrt(signal)
+    DETECT_THRESH = 1.5
     time = timeit.default_timer() - start
     print(f"TIME: {time}")
     return DETECT_MINAREA, DETECT_THRESH
