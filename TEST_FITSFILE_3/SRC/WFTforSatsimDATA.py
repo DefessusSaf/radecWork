@@ -32,7 +32,7 @@ for d in [TMP_DIR, OUTPUT_DIR]:
 
 # Опции для astrometry.net
 ASTROMETRY_CONFIG = "/home/hellnim/radecWork/TEST_FITSFILE_3/CONFIGS/astrometry.cfg"
-DOWNSAMPLE = 4
+DOWNSAMPLE = 1
 
 # Формирование команды astrometry.net.
 # Здесь мы используем опцию --dir TMP_DIR, чтобы все выходные файлы сохранялись в TMP,
@@ -74,20 +74,21 @@ try:
 
     # Корректируем DATE-OBS в новом заголовке, удаляя часовой пояс, если он присутствует
     if 'DATE-OBS' in header_new:
-        date_obs = header_new['DATE-OBS']
-        m = re.match(r"(.+T\d{2}:\d{2}:\d{2})", date_obs)
-        if m:
-            header_new['DATE-OBS'] = m.group(1)
-            print("Updated DATE-OBS in new header:", header_new['DATE-OBS'])
+        date_obs_full = header_new['DATE-OBS']
+        try:
+            # Удаляем всё, что после секунд и 'T' заменяем на пробел
+            header_new['DATE-OBS'] = date_obs_full.split('+')[0]
+            print("Updated DATE-OBS:", header_new['DATE-OBS'])
+        except Exception as e:
+            print(f"Failed to parse DATE-OBS: {date_obs_full} — {e}")
 
     # Обновляем исходный FITS-файл новым header и сохраняем в OUTPUT_DIR под именем base_name.fits
-    fits_obj = pyfits.open(fname_input)
-    fits_obj[0].header = header_new
-    fits_obj[0].data = image_data
-    fits_obj.writeto(fname_output, output_verify='silentfix', overwrite=True)
+    fname_tmp_updated = os.path.join(TMP_DIR, f"WCS_{base_name}.fits")
+    fits_obj = pyfits.PrimaryHDU(data=image_data, header=header_new)
+    fits_obj.writeto(fname_tmp_updated, output_verify='silentfix', overwrite=True)
     fits_obj.close()
 
-    print(f"Updated FITS file saved as {fname_output}")
+    print(f"Updated FITS file also saved in TMP as {fname_tmp_updated}")
 
 except Exception as e:
     print(f'No WCS solution for {fname_input}: {e}')

@@ -35,7 +35,7 @@ WIDTH = NY
 HEIGHT = NX
 
 FOCALLEN = 551
-
+# SCALE = 0.08
 # Расчет масштаба и радиуса поиска
 SCALE = PIXSIZE / FOCALLEN * _u.rad.to('arcsec') * _u.um.to('mm')
 SCALE_LOW = SCALE * _u.arcsec.to('deg') * np.min([NX, NY]) / 1.2
@@ -70,7 +70,17 @@ try:
     os.system(cmd)
     TicToc.toc()
 
-
+# Если после выполнения команды файл WCS не создан, пробуем альтернативную команду без параметров scale
+    # if not os.path.exists("TMP/XY.wcs"):
+    #     print("Первоначальная команда не дала решения.")
+    #     alt_cmd = (
+    #         f"solve-field --config {ASTROMETRY_CONFIG} --overwrite --downsample {DOWNSAMPLE} --cpulimit 3600 --no-plots "
+    #         f"--x-column X_CENTER --y-column Y_CENTER --sort-column AREA "
+    #         f"--width {WIDTH} --height {HEIGHT} TMP/XY.fits"
+    #     )
+    #     print(f"Executing alternative command: {alt_cmd}")
+    #     os.system(alt_cmd)
+              
     cmd = f'~/anaconda3/envs/radec/bin/new-wcs -i {fname_input} -w TMP/XY.wcs -o TMP/WCS_{os.path.basename(filename)}' #for server assy
 
     # Обновление WCS в исходном файле
