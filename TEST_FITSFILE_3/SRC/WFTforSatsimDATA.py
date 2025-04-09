@@ -32,13 +32,14 @@ for d in [TMP_DIR, OUTPUT_DIR]:
 
 # Опции для astrometry.net
 ASTROMETRY_CONFIG = "/home/hellnim/radecWork/TEST_FITSFILE_3/CONFIGS/astrometry.cfg"
-DOWNSAMPLE = 1
+DOWNSAMPLE = 3
 
 # Формирование команды astrometry.net.
 # Здесь мы используем опцию --dir TMP_DIR, чтобы все выходные файлы сохранялись в TMP,
 # и опцию -o, задающую базовое имя, равное base_name.
 cmd = (
-    f"solve-field --config {ASTROMETRY_CONFIG} --continue --downsample {DOWNSAMPLE} --no-plots "
+    f"solve-field --config {ASTROMETRY_CONFIG} --continue --downsample {DOWNSAMPLE} --no-plots -v "
+    # f"solve-field --config CONFIGS/astrometry.cfg --continue --downsample 2 --no-plots -v sat_new_wcs_00000.0000.fits"
     f"--dir {TMP_DIR} -o {base_name} {fname_input}"
 )
 
@@ -68,6 +69,7 @@ try:
     if not os.path.exists(updated_fits):
         raise FileNotFoundError(f"Updated FITS file not found: {updated_fits}")
 
+
     # Считываем новый header и данные из исходного FITS-файла
     header_new = pyfits.getheader(updated_fits, ext=0)
     image_data = pyfits.getdata(fname_input, ext=0)
@@ -83,10 +85,10 @@ try:
             print(f"Failed to parse DATE-OBS: {date_obs_full} — {e}")
 
     # Обновляем исходный FITS-файл новым header и сохраняем в OUTPUT_DIR под именем base_name.fits
-    fname_tmp_updated = os.path.join(TMP_DIR, f"WCS_{base_name}.fits")
+    fname_tmp_updated = os.path.join(TMP_DIR, f"WCS_{os.path.basename(base_name)}.fits")
     fits_obj = pyfits.PrimaryHDU(data=image_data, header=header_new)
     fits_obj.writeto(fname_tmp_updated, output_verify='silentfix', overwrite=True)
-    fits_obj.close()
+    # fits_obj.close()
 
     print(f"Updated FITS file also saved in TMP as {fname_tmp_updated}")
 
