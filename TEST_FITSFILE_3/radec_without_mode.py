@@ -10,6 +10,7 @@ from datetime import timedelta
 import astropy.units as u
 import os
 import glob
+from astropy.table import QTable
 
 def is_outlier(points, thresh=3.5):
     if len(points.shape) == 1:
@@ -23,48 +24,54 @@ def is_outlier(points, thresh=3.5):
 
 
 def load_data(file_path):
-    data =  np.genfromtxt(file_path, unpack=True)
-    return data
+    """Загружает данные из файла в QTable."""
+    try:
+        # Попробуем прочитать как ASCII-таблицу с разделителями
+        data = QTable.read(file_path, format='ascii.fast_no_header', delimiter=' ', names=('X', 'Y', 'ERRX', 'ERRY', 'A', 'B', 'XMIN', 'YMIN', 'XMAX', 'YMAX', 'TH', 'FLAG', 'FLUX'))
+        return data
+    except Exception as e:
+        print(f"Ошибка при чтении файла как ASCII: {e}")
+        raise
 
 
-def preprocess_data(X,Y,ERRX,ERRY,A,B,XMIN,YMIN,XMAX,YMAX,TH,FLAG,FLUX , x_min, x_max, y_min, y_max):
-    # y_threshold = np.percentile(Y, percentile)
-    # y_mask = Y < y_threshold
-
-    y_mask = (Y >= y_min) & (Y <= y_max)
-
-    x_mask = (X >= x_min) & (X <= x_max)
+def preprocess_data(table, x_min, x_max, y_min, y_max):
+    """Предварительная обработка данных с использованием QTable."""
+    y_mask = (table['Y'] >= y_min) & (table['Y'] <= y_max)
+    x_mask = (table['X'] >= x_min) & (table['X'] <= x_max)
     mask = x_mask & y_mask
-
-    X,Y,ERRX,ERRY,A,B,XMIN,YMIN,XMAX,YMAX,TH,FLAG,FLUX  = X[mask], Y[mask], ERRX[mask], ERRY[mask], A[mask], B[mask], XMIN[mask], YMIN[mask], XMAX[mask], YMAX[mask], TH[mask], FLAG[mask], FLUX[mask]
-
-    return X,Y,ERRX,ERRY,A,B,XMIN,YMIN,XMAX,YMAX,TH,FLAG,FLUX
+    return table[mask]
 
 
 def compute_elongation(A, B):
+    """Вычисляет элонгацию (соотношение A/B)."""
     return A / B
 
 def scale_features(features):
+    """Масштабирует признаки."""
     scaler = StandardScaler()
     return scaler.fit_transform(features)
 
 
 def ab_ratio(ELONG, threshold):
+    """Определяет объекты с низким соотношением A/B."""
     return ELONG < threshold
 
 
 def cluster_data(features_scaled, eps, min_samples):
+    """Выполняет кластеризацию DBSCAN."""
     dbscan = DBSCAN(eps=eps, min_samples=min_samples)
     return dbscan.fit_predict(features_scaled)
 
 
 def compute_errores(ERRX, ERRY):
+    """Вычисляет ошибки на основе ERRX и ERRY."""
     erroreX = np.sqrt(1/ERRX)
     erroreY = np.sqrt(1/ERRY)
     return erroreX, erroreY
 
 
 def choose_fits_file():
+    """Выбирает FITS-файл на основе содержимого лог-файла."""
     log_file = 'TMP/processing_log.txt'
     if not os.path.exists(log_file):
         raise FileNotFoundError("Log file does not exist.")
@@ -76,13 +83,11 @@ def choose_fits_file():
         raise ValueError("No file name found in the log file.")
 
     last_file_base = os.path.basename(last_file)
-    # Извлекаем суффикс (все символы до расширения)
     last_file_suffix = last_file_base.split('.')[0]
     print(f"Extracted suffix: {last_file_suffix}")
 
     fits_files = glob.glob('TMP/*.fits') + glob.glob('TMP/*.fit')
 
-    # Печать всех найденных файлов
     print("Found FITS files:")
     for f in fits_files:
         print(f)
@@ -90,9 +95,7 @@ def choose_fits_file():
     matching_file = None
     for fits_file in fits_files:
         file_name = os.path.basename(fits_file)
-        # Печать для отладки
         print(f"Checking file: {file_name}")
-        # Проверка наличия суффикса в имени файла
         if last_file_suffix in file_name:
             matching_file = fits_file
             break
@@ -106,27 +109,18 @@ def choose_fits_file():
 
 
 def convert(ra_deg, dec_deg):
+    """Преобразует градусы в формат ЧЧ:ММ:СС и ГГ:ММ:СС."""
     ra_angle = Angle(ra_deg, unit=u.deg)
     ra_hms = ra_angle.to_string(unit=u.hour, sep=':', precision=2)
 
     dec_angle = Angle(dec_deg, unit=u.deg)
-    dec_dms = dec_angle.to_string(unit=u.deg, sep=':', precision=2, alwayssign=True)  # Добавляем alwayssign=True
+    dec_dms = dec_angle.to_string(unit=u.deg, sep=':', precision=2, alwayssign=True)
 
     return ra_hms, dec_dms
 
 
 def save_results(coords_first, coords_second, base_filename, fits_filename, x_y_a_b_values, errors):
-    """
-    Сохраняет результаты кластеризаций вместе с данными X, Y, A, B, XMIN, YMIN, XMAX, YMAX
-
-    Параметры:
-        coords_first (list): Координаты RA и DEC первой кластеризации.
-        coords_second (list): Координаты RA и DEC второй кластеризации.
-        base_filename (str): Базовое имя файла.
-        fits_filename (str): Имя FITS файла для чтения заголовка.
-        x_y_a_b_values (dict): Словарь со значениями X, Y, A, B, XMIN, YMIN, XMAX, YMAX.
-        errors (dict): Словарь с ошибками по X и Y.
-    """
+    """Сохраняет результаты кластеризаций."""
     output_dir = 'PROCESS_FILE'
     os.makedirs(output_dir, exist_ok=True)
 
@@ -138,15 +132,10 @@ def save_results(coords_first, coords_second, base_filename, fits_filename, x_y_
             header = hdul[0].header
             date_obs = header.get('DATE-OBS', '00000')
             exptime = header.get('EXPTIME', 0)
-            # Вычисление среднего времени экспозиции, если EXPTIME задано
             if date_obs != '00000' and exptime > 0:
-                # Извлекаем дату и время
                 date_str, time_str = date_obs.split('T')
-                # Преобразуем строку времени в объект времени
                 time_obs = Time(f'{date_str} {time_str}', format='iso')
-                # Добавляем половину EXPTIME (в секундах)
                 avg_exposure_time = time_obs + timedelta(seconds=(exptime / 2.0))
-                # Формируем новую строку DATE-OBS с сохранением даты
                 new_time_str = avg_exposure_time.iso.replace(" ", "T")
                 f.write(f"{new_time_str}\n")
             else:
@@ -196,9 +185,27 @@ def main():
         print(e)
         return
 
-    X,Y,ERRX,ERRY,A,B,XMIN,YMIN,XMAX,YMAX,TH,FLAG,FLUX= load_data(f'{DIR}{fn}')
+    try:
+        data_table = load_data(f'{DIR}{fn}')
+    except Exception as e:
+        print(f"Ошибка при загрузке данных: {e}")
+        return
 
-    X,Y,ERRX,ERRY,A,B,XMIN,YMIN,XMAX,YMAX,TH,FLAG,FLUX = preprocess_data(X,Y,ERRX,ERRY,A,B,XMIN,YMIN,XMAX,YMAX,TH,FLAG,FLUX, x_min=100, x_max=3100, y_min=50, y_max=2105)
+    processed_table = preprocess_data(data_table, x_min=100, x_max=3100, y_min=50, y_max=2105)
+
+    X = processed_table['X']
+    Y = processed_table['Y']
+    ERRX = processed_table['ERRX']
+    ERRY = processed_table['ERRY']
+    A = processed_table['A']
+    B = processed_table['B']
+    XMIN = processed_table['XMIN']
+    YMIN = processed_table['YMIN']
+    XMAX = processed_table['XMAX']
+    YMAX = processed_table['YMAX']
+    TH = processed_table['TH']
+    FLAG = processed_table['FLAG']
+    FLUX = processed_table['FLUX']
 
     ELONG = compute_elongation(A, B)
 
@@ -211,10 +218,8 @@ def main():
     outlier_indices = is_outlier(ELONG)
     satellites = np.zeros(len(ELONG), dtype=bool)
     satellites[outlier_indices] = True
-    # print(f'ELONG: {likely_satelite}, FLUX: {hight_flux}')
 
     features = np.column_stack((TH, likely_satelite, hight_flux.astype(int)))
-    # print(f'features: {features}')
     features_scaled = scale_features(features)
 
     # Первая кластеризация для обнаружения потенциального спутника
@@ -222,7 +227,11 @@ def main():
     satellite_mask = labels_first_cluster == -1
     satellite_x_coords = X[satellite_mask]
     satellite_y_coords = Y[satellite_mask]
-    print(f'First cluster - X: {satellite_x_coords} Y: {satellite_y_coords}')
+    # print(f'First cluster:\n{satellite_x_coords}{satellite_y_coords}\n')
+    print(f"First cluster:")
+    for x, y in zip(satellite_x_coords, satellite_y_coords):
+        print(f" X: {x}, Y: {y}")
+
 
     with fits.open(fits_filename) as hdul:
         wcs = WCS(hdul[0].header)
@@ -255,12 +264,15 @@ def main():
     anomaly_mask = labels_anomalies == -1
     anomaly_x_coords = X_non_satellite[anomaly_mask]
     anomaly_y_coords = Y_non_satellite[anomaly_mask]
-    print(f'Second cluster - X: {anomaly_x_coords} Y: {anomaly_y_coords}')
+    # print(f'Second cluster:\n{anomaly_x_coords} {anomaly_y_coords}\n')
+    print(f"Second cluster:")
+    for x, y in zip(anomaly_x_coords, anomaly_y_coords):
+        print(f" X: {x}, Y: {y}")
 
     # Вывод координат для второй кластеризации
     sky_coords_second = wcs.pixel_to_world(anomaly_x_coords, anomaly_y_coords)
 
-    print("Second cluster: ")
+    print("RA and DEC: ")
     coords_second = []
     for coord in sky_coords_second:
         ra_deg = coord.ra.deg
@@ -296,7 +308,6 @@ def main():
         "err_y_first": erroreY[satellite_mask],
         "err_x_second": erroreX[non_satellite_mask][anomaly_mask],
         "err_y_second": erroreY[non_satellite_mask][anomaly_mask]
-
     }
 
     # Сохранение результатов
@@ -311,13 +322,13 @@ def main():
     # «Спутники» по первой кластеризации
     if np.any(satellite_mask):
         ax1.scatter(TH[satellite_mask], ELONG[satellite_mask],
-                    facecolors='none', edgecolors='red', s=200, label='First cluster (potential satellite)')
+                    facecolors='none', edgecolors='red', s=200, label='First cluster')
 
     # «Аномалии» по второй кластеризации
     if np.any(anomaly_mask):
         ax1.scatter(TH_non_satellite[anomaly_mask], ELONG_non_satellite[anomaly_mask],
                     facecolors='none', edgecolors='green', s=200,
-                    label='Second cluster (anomalies)')
+                    label='Second cluster')
 
     ax1.set_xlabel('Angle (TH)')
     ax1.set_ylabel('A/B')
@@ -327,30 +338,8 @@ def main():
     plt.tight_layout()
     plt.show()
 
-    # Визуализация 2: ELONG vs TH
-    fig2, ax2 = plt.subplots(figsize=(12, 9))
 
-    # Все объекты
-    ax2.scatter(ELONG, TH, c='blue', s=10, label='All data')
 
-    # «Спутники» по первой кластеризации
-    if np.any(satellite_mask):
-        ax2.scatter(ELONG[satellite_mask], TH[satellite_mask],
-                    facecolors='none', edgecolors='red', s=200, label='First cluster (potential satellite)')
-
-    # «Аномалии» по второй кластеризации
-    if np.any(anomaly_mask):
-        ax2.scatter(ELONG_non_satellite[anomaly_mask], TH_non_satellite[anomaly_mask],
-                    facecolors='none', edgecolors='green', s=200,
-                    label='Second cluster (anomalies)')
-
-    ax2.set_xlabel('A/B')
-    ax2.set_ylabel('Angle (TH)')
-    ax2.set_title('DBSCAN in (A/B, TH) feature space')
-    ax2.legend()
-    ax2.grid(True)
-    plt.tight_layout()
-    plt.show()
 
 if __name__ == "__main__":
     main()
